@@ -1,0 +1,16 @@
+{
+  "name": "Шифрованный Клан-Чат",
+  "short_name": "Клан-Чат",
+  "start_url": "index.html",
+  "display": "standalone",
+  "background_color": "#121212",
+  "theme_color": "#121212",
+  "icons": [
+    {
+      "src": "https://flaticon.com",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}
