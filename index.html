@@ -1,11 +1,10 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-    <link rel="manifest" href="manifest.json">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Шифрованный Клан-Чат</title>
-    <!-- Подключаем шрифт Arial и библиотеку сети MQTT -->
+    <title>ClaCha</title>
+    <link rel="manifest" href="manifest.json">
     <script src="https://unpkg.com"></script>
     <style>
         body { background-color: #121212; color: #f5f5f5; font-family: Arial, sans-serif; margin: 0; padding: 15px; display: flex; flex-direction: column; height: 100vh; box-sizing: border-box; }
@@ -23,7 +22,6 @@
 </head>
 <body>
 
-<!-- ЭКРАН ВХОДА -->
 <div id="login_screen" class="screen">
     <h2>ШИФРОВАННЫЙ КЛАН-ЧАТ</h2>
     <input type="text" id="name_input" placeholder="Ваше имя при входе">
@@ -31,36 +29,30 @@
         <option value="player">Я Игрок</option>
         <option value="leader">Я Владелец Клана (Хост)</option>
     </select>
-    <input type="password" id="pass_input" placeholder="ПИН-код Клана (Буквы и цифры)">
+    <input type="password" id="pass_input" placeholder="ПИН-код Клана">
     <button onclick="connectToGame()">ВОЙТИ В СЕССИЮ</button>
 </div>
 
-<!-- ИГРОВОЙ ЭКРАН -->
 <div id="game_screen" class="screen hidden">
     <div class="admin-panel">
         <input type="text" id="current_name_input" style="flex-grow:1; margin:0;" placeholder="Сменить имя">
         <button class="btn-gray" onclick="changeName()">ИЗМ.</button>
     </div>
-    <div id="info_label" style="font-size:13px; color:#aaa; margin-bottom:5px; italic;"></div>
-    
+    <div id="info_label" style="font-size:13px; color:#aaa; margin-bottom:5px;"></div>
     <div id="chat_log">--- Сквозное шифрование активно ---&#10;</div>
-
-    <!-- Админ-панель лидера -->
     <div id="admin_panel" class="admin-panel hidden">
         <input type="text" id="target_input" style="flex-grow:1; margin:0;" placeholder="Ник игрока">
         <button class="btn-green" onclick="adminAction('ALLOW_USER')">Впустить</button>
         <button class="btn-red" onclick="adminAction('KICK_USER')">Удалить</button>
     </div>
-
     <input type="text" id="msg_input" placeholder="Введите сообщение...">
-    <button class="btn-green" id="send_btn" onclick="sendMessage()">ОТПРАВИТЬ СООБЩЕНИЕ</button>
+    <button class="btn-green" id="send_btn" onclick="sendMessage()">ОТПРАВИТЬ</button>
 </div>
 
 <script>
 let username, roomPassword, isLeader, client, topic;
 let approvedPlayers = new Set();
 
-// Простейшее и надежное сквозное шифрование (XOR + Base64)
 function crypt(str, key) {
     let output = "";
     for (let i = 0; i < str.length; i++) {
@@ -75,13 +67,10 @@ function connectToGame() {
     username = document.getElementById("name_input").value.trim();
     roomPassword = document.getElementById("pass_input").value.trim();
     isLeader = document.getElementById("role_spinner").value === "leader";
-
     if (!username || !roomPassword) return;
-
     document.getElementById("login_screen").classList.add("hidden");
     document.getElementById("game_screen").classList.remove("hidden");
     document.getElementById("current_name_input").value = username;
-
     if (isLeader) {
         document.getElementById("admin_panel").classList.remove("hidden");
         approvedPlayers.add(username);
@@ -89,34 +78,27 @@ function connectToGame() {
     } else {
         document.getElementById("msg_input").disabled = true;
         document.getElementById("send_btn").disabled = true;
-        document.getElementById("info_label").innerText = "Статус: Ожидание авторизации Лидером...";
-        updateChat(" Системный запрос на подключение отправлен...");
+        document.getElementById("info_label").innerText = "Статус: Ожидание авторизации...";
+        updateChat(" Системный запрос отправлен...");
     }
-
     topic = "secure_clan_room_" + roomPassword;
-    
-    // Подключаемся по защищенному WebSoket-порту протокола MQTT (Браузерная защита TLS)
     client = mqtt.connect("wss://://hivemq.com");
-
     client.on('connect', () => {
         client.subscribe(topic);
         if (!isLeader) sendSecure(`REQUEST_JOIN:${username}`);
-        else updateChat(" Клан успешно инициализирован в сети.");
+        else updateChat(" Клан успешно инициализирован.");
     });
-
     client.on('message', (t, message) => {
         let rawText = unpackMsg(message.toString(), roomPassword);
         parseNetworkLogic(rawText);
     });
 }
-
 function sendSecure(rawText) {
     if (client) {
         let encrypted = packMsg(rawText, roomPassword);
         client.publish(topic, encrypted);
     }
 }
-
 function sendMessage() {
     let text = document.getElementById("msg_input").value.trim();
     if (text) {
@@ -124,7 +106,6 @@ function sendMessage() {
         document.getElementById("msg_input").value = "";
     }
 }
-
 function changeName() {
     let newName = document.getElementById("current_name_input").value.trim();
     if (newName && newName !== username) {
@@ -137,7 +118,6 @@ function changeName() {
         }
     }
 }
-
 function adminAction(type) {
     let target = document.getElementById("target_input").value.trim();
     if (target && isLeader) {
@@ -148,30 +128,29 @@ function adminAction(type) {
         document.getElementById("target_input").value = "";
     }
 }
-
 function parseNetworkLogic(text) {
     if (text.startsWith("REQUEST_JOIN:")) {
-        let name = text.split(":")[1];
+        let name = text.split(":");
         if (isLeader) updateChat(` ЗАПРОС: Игрок '${name}' хочет войти.`);
     } 
     else if (text.startsWith("ALLOW_USER:")) {
-        let name = text.split(":")[1];
+        let name = text.split(":");
         if (username === name && !isLeader) {
             document.getElementById("msg_input").disabled = false;
             document.getElementById("send_btn").disabled = false;
             document.getElementById("info_label").innerText = "Статус: Доступ разрешен. Вы в сети.";
-            updateChat(" Владелец Клана открыл вам доступ в чат.");
+            updateChat(" Владелец Клана открыл вам доступ.");
         } else if (isLeader || !document.getElementById("msg_input").disabled) {
-            updateChat(` Игрок '${name}' вошел в комнату.`);
+            updateChat(` Игрок '${name}' вошел.`);
         }
     } 
     else if (text.startsWith("KICK_USER:")) {
-        let name = text.split(":")[1];
+        let name = text.split(":");
         if (username === name) {
             document.getElementById("chat_log").innerText = "";
-            window.location.reload(); // Перезагружаем и очищаем всё
+            window.location.reload();
         } else if (isLeader || !document.getElementById("msg_input").disabled) {
-            updateChat(` Игрок '${name}' был исключен из клана.`);
+            updateChat(` Игрок '${name}' исключен.`);
         }
     } 
     else if (text.startsWith("RENAME:")) {
@@ -183,10 +162,9 @@ function parseNetworkLogic(text) {
         if (isLeader || !document.getElementById("msg_input").disabled) updateChat(content);
     }
 }
-
 function updateChat(text) {
     let log = document.getElementById("chat_log");
-    log.innerText += text + "\n";
+    log.innerHTML += text + "\n";
     log.scrollTop = log.scrollHeight;
 }
 </script>
