@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ClaCha</title>
+    <title>Чат Клана</title>
     <link rel="manifest" href="manifest.json">
     <script src="https://unpkg.com"></script>
     <style>
@@ -14,16 +14,20 @@
         button { background-color: #2980b9; color: white; border: none; padding: 14px; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; }
         #chat_log { flex-grow: 1; background-color: #1a1a1a; border-radius: 8px; padding: 15px; overflow-y: auto; margin-bottom: 10px; white-space: pre-wrap; font-size: 15px; }
         .admin-panel { display: flex; gap: 5px; margin-bottom: 10px; }
+        .game-panel { background-color: #1e272e; border: 1px solid #34495e; padding: 12px; border-radius: 8px; margin-bottom: 10px; display: flex; flex-direction: column; gap: 8px; }
+        .game-title { font-size: 14px; font-weight: bold; color: #f1c40f; text-align: center; }
         .btn-green { background-color: #27ae60; }
         .btn-red { background-color: #c0392b; }
         .btn-gray { background-color: #555; }
+        .btn-orange { background-color: #e67e22; }
         .hidden { display: none !important; }
     </style>
 </head>
 <body>
 
+<!-- ЭКРАН ВХОДА -->
 <div id="login_screen" class="screen">
-    <h2>ШИФРОВАННЫЙ КЛАН-ЧАТ</h2>
+    <h2>ЧАТ КЛАНА</h2>
     <input type="text" id="name_input" placeholder="Ваше имя при входе">
     <select id="role_spinner">
         <option value="player">Я Игрок</option>
@@ -33,26 +37,48 @@
     <button onclick="connectToGame()">ВОЙТИ В СЕССИЮ</button>
 </div>
 
+<!-- ИГРОВОЙ ЭКРАН -->
 <div id="game_screen" class="screen hidden">
     <div class="admin-panel">
         <input type="text" id="current_name_input" style="flex-grow:1; margin:0;" placeholder="Сменить имя">
         <button class="btn-gray" onclick="changeName()">ИЗМ.</button>
     </div>
-    <div id="info_label" style="font-size:13px; color:#aaa; margin-bottom:5px;"></div>
+    <div id="info_label" style="font-size:13px; color:#aaa; margin-top:5px; margin-bottom:5px;"></div>
+
+    <!-- ПАНЕЛЬ МИНИ-ИГРЫ "УГАДАЙ ЧИСЛО" -->
+    <div class="game-panel">
+        <div class="game-title">МИНИ-ИГРА: УГАДАЙ ЧИСЛО (1-100)</div>
+        
+        <!-- Интерфейс для Лидера (Загадать число) -->
+        <div id="leader_game_controls" class="hidden" style="display: flex; gap: 5px;">
+            <button class="btn-orange" style="flex-grow:1; padding:8px;" onclick="generateSecretNumber()">Загадать новое число</button>
+        </div>
+        
+        <!-- Интерфейс для Игрока (Попробовать угадать) -->
+        <div id="player_game_controls" style="display: flex; gap: 5px;">
+            <input type="number" id="guess_input" style="margin:0; flex-grow:1; padding:8px;" placeholder="Ваш вариант">
+            <button class="btn-orange" style="padding:8px 15px;" onclick="sendGuess()">Проверить</button>
+        </div>
+    </div>
+    
     <div id="chat_log">--- Сквозное шифрование активно ---&#10;</div>
+
+    <!-- Панель управления игроками для Лидера -->
     <div id="admin_panel" class="admin-panel hidden">
         <input type="text" id="target_input" style="flex-grow:1; margin:0;" placeholder="Ник игрока">
         <button class="btn-green" onclick="adminAction('ALLOW_USER')">Впустить</button>
         <button class="btn-red" onclick="adminAction('KICK_USER')">Удалить</button>
     </div>
+
     <input type="text" id="msg_input" placeholder="Введите сообщение...">
     <button class="btn-green" id="send_btn" onclick="sendMessage()">ОТПРАВИТЬ</button>
 </div>
 
 <script>
 let username, roomPassword, isLeader, client, topic;
-let approvedPlayers = new Set();
+let secretNumber = null;
 
+// Сквозное шифрование (XOR + Base64)
 function crypt(str, key) {
     let output = "";
     for (let i = 0; i < str.length; i++) {
@@ -68,37 +94,47 @@ function connectToGame() {
     roomPassword = document.getElementById("pass_input").value.trim();
     isLeader = document.getElementById("role_spinner").value === "leader";
     if (!username || !roomPassword) return;
+
     document.getElementById("login_screen").classList.add("hidden");
     document.getElementById("game_screen").classList.remove("hidden");
     document.getElementById("current_name_input").value = username;
+
     if (isLeader) {
         document.getElementById("admin_panel").classList.remove("hidden");
-        approvedPlayers.add(username);
+        document.getElementById("leader_game_controls").classList.remove("hidden");
+        document.getElementById("player_game_controls").classList.add("hidden");
         document.getElementById("info_label").innerText = `Статус: Лидер | ПИН: ${roomPassword}`;
     } else {
         document.getElementById("msg_input").disabled = true;
         document.getElementById("send_btn").disabled = true;
-        document.getElementById("info_label").innerText = "Статус: Ожидание авторизации...";
-        updateChat(" Системный запрос отправлен...");
+        document.getElementById("info_label").innerText = "Статус: Ожидание авторизации Лидером...";
+        updateChat(" Системный запрос на подключение отправлен...");
     }
-    topic = "secure_clan_room_" + roomPassword;
+
+    // Уникальный защищенный канал клана на базе вашего логина GitHub
+    topic = "nekulvkh2_clan_room_" + roomPassword;
+    
     client = mqtt.connect("wss://://hivemq.com");
+
     client.on('connect', () => {
         client.subscribe(topic);
         if (!isLeader) sendSecure(`REQUEST_JOIN:${username}`);
-        else updateChat(" Клан успешно инициализирован.");
+        else updateChat(" Клан успешно инициализирован в защищенной комнате.");
     });
+
     client.on('message', (t, message) => {
         let rawText = unpackMsg(message.toString(), roomPassword);
         parseNetworkLogic(rawText);
     });
 }
+
 function sendSecure(rawText) {
     if (client) {
         let encrypted = packMsg(rawText, roomPassword);
         client.publish(topic, encrypted);
     }
 }
+
 function sendMessage() {
     let text = document.getElementById("msg_input").value.trim();
     if (text) {
@@ -106,6 +142,22 @@ function sendMessage() {
         document.getElementById("msg_input").value = "";
     }
 }
+
+// ЛОГИКА ИГРЫ "УГАДАЙ ЧИСЛО"
+function generateSecretNumber() {
+    secretNumber = Math.floor(Math.random() * 100) + 1;
+    sendSecure(`GAME_START:${username}`);
+    updateChat(` СИСТЕМА: Вы загадали число. Игроки могут угадывать!`);
+}
+
+function sendGuess() {
+    let guess = document.getElementById("guess_input").value.trim();
+    if (guess) {
+        sendSecure(`GAME_GUESS:${username}:${guess}`);
+        document.getElementById("guess_input").value = "";
+    }
+}
+
 function changeName() {
     let newName = document.getElementById("current_name_input").value.trim();
     if (newName && newName !== username) {
@@ -118,53 +170,87 @@ function changeName() {
         }
     }
 }
+
 function adminAction(type) {
     let target = document.getElementById("target_input").value.trim();
     if (target && isLeader) {
-        if (type === 'ALLOW_USER') approvedPlayers.add(target);
-        if (type === 'KICK_USER') approvedPlayers.delete(target);
         sendSecure(`${type}:${target}`);
         updateChat(type === 'ALLOW_USER' ? `Игрок '${target}' авторизован.` : `Игрок '${target}' удален.`);
         document.getElementById("target_input").value = "";
     }
 }
+
 function parseNetworkLogic(text) {
     if (text.startsWith("REQUEST_JOIN:")) {
-        let name = text.split(":");
+        let name = text.substring(13);
         if (isLeader) updateChat(` ЗАПРОС: Игрок '${name}' хочет войти.`);
     } 
     else if (text.startsWith("ALLOW_USER:")) {
-        let name = text.split(":");
+        let name = text.substring(11);
         if (username === name && !isLeader) {
             document.getElementById("msg_input").disabled = false;
             document.getElementById("send_btn").disabled = false;
             document.getElementById("info_label").innerText = "Статус: Доступ разрешен. Вы в сети.";
-            updateChat(" Владелец Клана открыл вам доступ.");
+            updateChat(" Владелец Клана открыл вам доступ в чат.");
         } else if (isLeader || !document.getElementById("msg_input").disabled) {
-            updateChat(` Игрок '${name}' вошел.`);
+            updateChat(` Игрок '${name}' вошел в комнату.`);
         }
     } 
     else if (text.startsWith("KICK_USER:")) {
-        let name = text.split(":");
+        let name = text.substring(10);
         if (username === name) {
             document.getElementById("chat_log").innerText = "";
             window.location.reload();
         } else if (isLeader || !document.getElementById("msg_input").disabled) {
-            updateChat(` Игрок '${name}' исключен.`);
+            updateChat(` Игрок '${name}' был исключен из клана.`);
         }
     } 
     else if (text.startsWith("RENAME:")) {
-        let [, old, n] = text.split(":");
-        updateChat(` СИСТЕМА: '${old}' сменил ник на '${n}'`);
+        let parts = text.split(":");
+        updateChat(` СИСТЕМА: '${parts[1]}' сменил ник на '${parts[2]}'`);
     } 
     else if (text.startsWith("MSG:")) {
         let content = text.substring(4);
         if (isLeader || !document.getElementById("msg_input").disabled) updateChat(content);
     }
+    // СЕТЕВЫЕ СИГНАЛЫ ДЛЯ ИГРЫ
+    else if (text.startsWith("GAME_START:")) {
+        let leaderName = text.substring(11);
+        updateChat(` ИГРА: Лидер ${leaderName} загадал новое число от 1 до 100! Попробуйте угадать.`);
+    }
+    else if (text.startsWith("GAME_GUESS:")) {
+        let parts = text.split(":");
+        let pName = parts[1];
+        let pGuess = parseInt(parts[2]);
+        
+        if (isLeader) {
+            if (secretNumber === null) return;
+            if (pGuess === secretNumber) {
+                sendSecure(`GAME_WIN:${pName}:${secretNumber}`);
+                updateChat(` ИГРА: Игрок '${pName}' угадал число ${secretNumber}! Игра окончена.`);
+                secretNumber = null;
+            } else if (pGuess < secretNumber) {
+                sendSecure(`GAME_HINT:${pName}:Загаданное число БОЛЬШЕ, чем ${pGuess}`);
+            } else {
+                sendSecure(`GAME_HINT:${pName}:Загаданное число МЕНЬШЕ, чем ${pGuess}`);
+            }
+        }
+    }
+    else if (text.startsWith("GAME_WIN:")) {
+        let parts = text.split(":");
+        updateChat(` ИГРА 🎉: Победитель '${parts[1]}'! Было загадано число ${parts[2]}.`);
+    }
+    else if (text.startsWith("GAME_HINT:")) {
+        let parts = text.split(":");
+        if (username === parts[1]) {
+            updateChat(` ПОДКАЗКА 💡: ${parts[2]}`);
+        }
+    }
 }
+
 function updateChat(text) {
     let log = document.getElementById("chat_log");
-    log.innerHTML += text + "\n";
+    log.innerText += text + "\n";
     log.scrollTop = log.scrollHeight;
 }
 </script>
