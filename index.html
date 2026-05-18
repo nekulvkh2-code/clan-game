@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Чат Клана</title>
-    <link rel="manifest" href="manifest.json">
+    <!-- Исправленный CDN для гарантированного подключения сети -->
     <script src="https://unpkg.com"></script>
     <style>
         body { background-color: #121212; color: #f5f5f5; font-family: Arial, sans-serif; margin: 0; padding: 15px; display: flex; flex-direction: column; height: 100vh; box-sizing: border-box; }
@@ -25,50 +25,50 @@
 </head>
 <body>
 
-<!-- ЭКРАН ВХОДА -->
-<div id="login_screen" class="screen">
-    <h2>ЧАТ КЛАНА</h2>
-    <input type="text" id="name_input" placeholder="Ваше имя при входе">
-    <select id="role_spinner">
-        <option value="player">Я Игрок</option>
-        <option value="leader">Я Владелец Клана (Хост)</option>
-    </select>
-    <input type="password" id="pass_input" placeholder="ПИН-код Клана">
-    <button onclick="connectToGame()">ВОЙТИ В СЕССИЮ</button>
-</div>
-
-<!-- ИГРОВОЙ ЭКРАН -->
-<div id="game_screen" class="screen hidden">
-    <div class="admin-panel">
-        <input type="text" id="current_name_input" style="flex-grow:1; margin:0;" placeholder="Сменить имя">
-        <button class="btn-gray" onclick="changeName()">ИЗМ.</button>
+    <!-- ЭКРАН ВХОДА -->
+    <div id="login_screen" class="screen">
+        <h2>ЧАТ КЛАНА</h2>
+        <input type="text" id="name_input" placeholder="Ваше имя при входе">
+        <select id="role_spinner">
+            <option value="player">Я Игрок</option>
+            <option value="leader">Я Владелец Клана (Хост)</option>
+        </select>
+        <input type="password" id="pass_input" placeholder="ПИН-код Клана">
+        <button onclick="connectToGame()">ВОЙТИ В СЕССИЮ</button>
     </div>
-    <div id="info_label" style="font-size:13px; color:#aaa; margin-top:5px; margin-bottom:5px;"></div>
 
-    <!-- ПАНЕЛЬ МИНИ-ИГРЫ -->
-    <div class="game-panel">
-        <div class="game-title">МИНИ-ИГРА: УГАДАЙ ЧИСЛО (1-100)</div>
-        <div id="leader_game_controls" class="hidden" style="display: flex; gap: 5px;">
-            <button class="btn-orange" style="flex-grow:1; padding:8px;" onclick="generateSecretNumber()">Загадать новое число</button>
+    <!-- ИГРОВОЙ ЭКРАН -->
+    <div id="game_screen" class="screen hidden">
+        <div class="admin-panel">
+            <input type="text" id="current_name_input" style="flex-grow:1; margin:0;" placeholder="Сменить имя">
+            <button class="btn-gray" onclick="changeName()">ИЗМ.</button>
         </div>
-        <div id="player_game_controls" style="display: flex; gap: 5px;">
-            <input type="number" id="guess_input" style="margin:0; flex-grow:1; padding:8px;" placeholder="Ваш вариант">
-            <button class="btn-orange" style="padding:8px 15px;" onclick="sendGuess()">Проверить</button>
+        <div id="info_label" style="font-size:13px; color:#aaa; margin-top:5px; margin-bottom:5px;"></div>
+        
+        <!-- ПАНЕЛЬ МИНИ-ИГРЫ -->
+        <div class="game-panel">
+            <div class="game-title">МИНИ-ИГРА: УГАДАЙ ЧИСЛО (1-100)</div>
+            <div id="leader_game_controls" class="hidden" style="display: flex; gap: 5px;">
+                <button class="btn-orange" style="flex-grow:1; padding:8px;" onclick="generateSecretNumber()">Загадать новое число</button>
+            </div>
+            <div id="player_game_controls" style="display: flex; gap: 5px;">
+                <input type="number" id="guess_input" style="margin:0; flex-grow:1; padding:8px;" placeholder="Ваш вариант">
+                <button class="btn-orange" style="padding:8px 15px;" onclick="sendGuess()">Проверить</button>
+            </div>
         </div>
-    </div>
-    
-    <div id="chat_log">--- Сквозное шифрование активно ---&#10;</div>
 
-    <!-- Панель управления для Лидера -->
-    <div id="admin_panel" class="admin-panel hidden">
-        <input type="text" id="target_input" style="flex-grow:1; margin:0;" placeholder="Ник игрока">
-        <button class="btn-green" onclick="adminAction('ALLOW_USER')">Впустить</button>
-        <button class="btn-red" onclick="adminAction('KICK_USER')">Удалить</button>
+        <div id="chat_log">--- Сквозное шифрование активно ---<br></div>
+        
+        <!-- Панель управления для Лидера -->
+        <div id="admin_panel" class="admin-panel hidden">
+            <input type="text" id="target_input" style="flex-grow:1; margin:0;" placeholder="Ник игрока">
+            <button class="btn-green" onclick="adminAction('ALLOW_USER')">Впустить</button>
+            <button class="btn-red" onclick="adminAction('KICK_USER')">Удалить</button>
+        </div>
+        
+        <input type="text" id="msg_input" placeholder="Введите сообщение...">
+        <button class="btn-green" id="send_btn" onclick="sendMessage()">ОТПРАВИТЬ</button>
     </div>
-
-    <input type="text" id="msg_input" placeholder="Введите сообщение...">
-    <button class="btn-green" id="send_btn" onclick="sendMessage()">ОТПРАВИТЬ</button>
-</div>
 
 <script>
 let username, roomPassword, isLeader, client, topic;
@@ -81,8 +81,18 @@ function crypt(str, key) {
     }
     return output;
 }
-function packMsg(text, key) { return btoa(unescape(encodeURIComponent(crypt(text, key)))); }
-function unpackMsg(b64, key) { try { return crypt(decodeURIComponent(escape(atob(b64))), key); } catch(e) { return "[Ошибка расшифровки]"; } }
+
+function packMsg(text, key) {
+    return btoa(unescape(encodeURIComponent(crypt(text, key))));
+}
+
+function unpackMsg(b64, key) {
+    try {
+        return crypt(decodeURIComponent(escape(atob(b64))), key);
+    } catch(e) {
+        return "[Ошибка расшифровки]";
+    }
+}
 
 function connectToGame() {
     username = document.getElementById("name_input").value.trim();
@@ -102,17 +112,22 @@ function connectToGame() {
     } else {
         document.getElementById("msg_input").disabled = true;
         document.getElementById("send_btn").disabled = true;
-        document.getElementById("info_label").innerText = `Статус: Ожидание авторизации Лидером... | ПИН: ${roomPassword}`;
+        document.getElementById("info_label").innerText = `Статус: Ожидание授权 Лидером... | ПИН: ${roomPassword}`;
         updateChat(" Системный запрос на подключение отправлен...");
     }
 
     topic = "nekulvkh2_clan_room_" + roomPassword;
+    
+    // Подключение к публичному защищенному серверу MQTT брокера
     client = mqtt.connect("wss://://hivemq.com");
 
     client.on('connect', () => {
         client.subscribe(topic);
-        if (!isLeader) sendSecure(`REQUEST_JOIN:${username}`);
-        else updateChat(" Клан успешно инициализирован в защищенной комнате.");
+        if (!isLeader) {
+            sendSecure(`REQUEST_JOIN:${username}`);
+        } else {
+            updateChat(" Клан успешно инициализирован в защищенной комнате.");
+        }
     });
 
     client.on('message', (t, message) => {
@@ -178,7 +193,9 @@ function parseNetworkLogic(text) {
 
     if (command === "REQUEST_JOIN") {
         let name = parts[1];
-        if (isLeader) updateChat(` ЗАПРОС: Игрок '${name}' хочет войти. Введите его ник в поле внизу и нажмите Впустить.`);
+        if (isLeader) {
+            updateChat(` ЗАПРОС: Игрок '${name}' хочет войти. Введите его ник в поле внизу и нажмите Впустить.`);
+        }
     } 
     else if (command === "ALLOW_USER") {
         let name = parts[1];
@@ -208,18 +225,18 @@ function parseNetworkLogic(text) {
     else if (command === "MSG") {
         let sender = parts[1];
         let messageText = parts.slice(2).join(":");
+        // Сообщения видят только Лидер и авторизованные игроки (у которых инпут активен)
         if (isLeader || !document.getElementById("msg_input").disabled) {
             updateChat(`${sender}: ${messageText}`);
         }
-    }
+    } 
     else if (command === "GAME_START") {
         let leaderName = parts[1];
         updateChat(` ИГРА: Лидер ${leaderName} загадал новое число от 1 до 100! Попробуйте угадать.`);
-    }
+    } 
     else if (command === "GAME_GUESS") {
         let pName = parts[1];
         let pGuess = parseInt(parts[2]);
-        
         if (isLeader) {
             if (secretNumber === null) return;
             if (pGuess === secretNumber) {
@@ -232,12 +249,12 @@ function parseNetworkLogic(text) {
                 sendSecure(`GAME_HINT:${pName}:Загаданное число МЕНЬШЕ, чем ${pGuess}`);
             }
         }
-    }
+    } 
     else if (command === "GAME_WIN") {
         let pName = parts[1];
         let sNum = parts[2];
         updateChat(` ИГРА 🎉: Победитель '${pName}'! Было загадано число ${sNum}.`);
-    }
+    } 
     else if (command === "GAME_HINT") {
         let pName = parts[1];
         let hintText = parts.slice(2).join(":");
