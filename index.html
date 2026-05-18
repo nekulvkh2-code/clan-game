@@ -5,9 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Чат Клана (Защищенная E2EE сессия)</title>
     
-    <!-- Подключение внешних библиотек через HTTPS CDN -->
-    <script src="https://cloudflare.com"></script>
-    <script src="https://cloudflare.com"></script>
+    <!-- Подключение библиотек сети и сквозного шифрования AES-256 -->
+    <script src="https://jsdelivr.net"></script>
+    <script src="https://jsdelivr.net"></script>
     
     <style>
         body { background-color: #121212; color: #f5f5f5; font-family: Arial, sans-serif; margin: 0; padding: 15px; display: flex; flex-direction: column; height: 100vh; box-sizing: border-box; }
@@ -74,7 +74,6 @@
     </div>
 
 <script>
-// Глобальные переменные
 var username = "";
 var roomPassword = "";
 var secureKey = "";
@@ -114,7 +113,13 @@ function connectToGame() {
             return;
         }
 
-        // Генерация 256-битного ключа из вашего ПИН-кода
+        // Проверка загрузки библиотеки CryptoJS
+        if (typeof CryptoJS === "undefined") {
+            alert("Критическая ошибка: библиотека CryptoJS не загрузилась. Проверьте интернет-соединение.");
+            return;
+        }
+
+        // Генерация 256-битного мастер-ключа из вашего ПИН-кода
         secureKey = CryptoJS.SHA256(roomPassword).toString();
 
         document.getElementById("login_screen").classList.add("hidden");
@@ -167,7 +172,6 @@ function sendSecure(rawText) {
     }
 }
 
-// Отправка сообщений
 function sendMessage() {
     var text = document.getElementById("msg_input").value.trim();
     if (text) {
@@ -212,7 +216,7 @@ function adminAction(type) {
     }
 }
 
-// Разбор строк без использования квадратных скобок и индексов
+// Стабильный разбор строк без единой квадратной скобки
 function parseNetworkLogic(text) {
     var separatorIndex = text.indexOf(":");
     if (separatorIndex === -1) return;
@@ -315,6 +319,7 @@ function updateChat(text) {
 </script>
 </body>
 </html>
+
 
 
 
