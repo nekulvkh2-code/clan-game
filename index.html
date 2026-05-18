@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Чат Клана (Защищенная E2EE сессия)</title>
-    <link rel="manifest" href="manifest.json">
     
     <!-- Подключение внешних библиотек через HTTPS CDN -->
     <script src="https://cloudflare.com"></script>
@@ -168,6 +167,7 @@ function sendSecure(rawText) {
     }
 }
 
+// Отправка сообщений
 function sendMessage() {
     var text = document.getElementById("msg_input").value.trim();
     if (text) {
@@ -212,7 +212,7 @@ function adminAction(type) {
     }
 }
 
-// ПОЛНОСТЬЮ ОБНОВЛЕНО: Разбор строк вообще БЕЗ использования квадратных скобок и индексов
+// Разбор строк без использования квадратных скобок и индексов
 function parseNetworkLogic(text) {
     var separatorIndex = text.indexOf(":");
     if (separatorIndex === -1) return;
@@ -315,6 +315,7 @@ function updateChat(text) {
 </script>
 </body>
 </html>
+
 
 
 
