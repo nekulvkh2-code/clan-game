@@ -75,10 +75,16 @@
     </div>
 
 <script>
-var username, roomPassword, secureKey, isLeader, client, topic;
+// Глобальные переменные
+var username = "";
+var roomPassword = "";
+var secureKey = "";
+var isLeader = false;
+var client = null;
+var topic = "";
 var secretNumber = null;
 
-// Полноценное E2EE шифрование AES-256
+// E2EE шифрование AES-256
 function packMsg(text, key) {
     try {
         return CryptoJS.AES.encrypt(text, key).toString();
@@ -99,51 +105,58 @@ function unpackMsg(cipherText, key) {
 }
 
 function connectToGame() {
-    username = document.getElementById("name_input").value.trim();
-    roomPassword = document.getElementById("pass_input").value.trim();
-    isLeader = document.getElementById("role_spinner").value === "leader";
-    if (!username || !roomPassword) return;
-
-    // Генерация 256-битного мастер-ключа из вашего ПИН-кода
-    secureKey = CryptoJS.SHA256(roomPassword).toString();
-
-    document.getElementById("login_screen").classList.add("hidden");
-    document.getElementById("game_screen").classList.remove("hidden");
-    document.getElementById("current_name_input").value = username;
-
-    if (isLeader) {
-        document.getElementById("admin_panel").classList.remove("hidden");
-        document.getElementById("leader_game_controls").classList.remove("hidden");
-        document.getElementById("player_game_controls").classList.add("hidden");
-        document.getElementById("info_label").innerText = "Статус: Лидер | ПИН: " + roomPassword;
-    } else {
-        document.getElementById("msg_input").disabled = true;
-        document.getElementById("send_btn").disabled = true;
-        document.getElementById("info_label").innerText = "Статус: Ожидание авторизации Лидером... | ПИН: " + roomPassword;
-        updateChat(" Системный запрос на подключение отправлен...");
-    }
-
-    // Хешируем имя веб-сокет топика, чтобы скрыть его от посторонних глаз
-    topic = "clan_room_" + CryptoJS.MD5(roomPassword).toString();
-    client = mqtt.connect("wss://://hivemq.com");
-
-    client.on('connect', function() {
-        client.subscribe(topic);
-        if (!isLeader) {
-            sendSecure("REQUEST_JOIN:" + username);
-        } else {
-            updateChat(" Клан успешно инициализирован в защищенной комнате.");
+    try {
+        username = document.getElementById("name_input").value.trim();
+        roomPassword = document.getElementById("pass_input").value.trim();
+        isLeader = document.getElementById("role_spinner").value === "leader";
+        
+        if (!username || !roomPassword) {
+            alert("Пожалуйста, заполните все поля!");
+            return;
         }
-    });
 
-    client.on('message', function(t, message) {
-        var rawText = unpackMsg(message.toString(), secureKey);
-        parseNetworkLogic(rawText);
-    });
+        // Генерация 256-битного ключа из вашего ПИН-кода
+        secureKey = CryptoJS.SHA256(roomPassword).toString();
 
-    client.on('error', function(err) {
-        updateChat(" Ошибка сети: " + err.message);
-    });
+        document.getElementById("login_screen").classList.add("hidden");
+        document.getElementById("game_screen").classList.remove("hidden");
+        document.getElementById("current_name_input").value = username;
+
+        if (isLeader) {
+            document.getElementById("admin_panel").classList.remove("hidden");
+            document.getElementById("leader_game_controls").classList.remove("hidden");
+            document.getElementById("player_game_controls").classList.add("hidden");
+            document.getElementById("info_label").innerText = "Статус: Лидер | ПИН: " + roomPassword;
+        } else {
+            document.getElementById("msg_input").disabled = true;
+            document.getElementById("send_btn").disabled = true;
+            document.getElementById("info_label").innerText = "Статус: Ожидание авторизации Лидером... | ПИН: " + roomPassword;
+            updateChat(" Системный запрос на подключение отправлен...");
+        }
+
+        topic = "clan_room_" + CryptoJS.MD5(roomPassword).toString();
+        client = mqtt.connect("wss://://hivemq.com");
+
+        client.on('connect', function() {
+            client.subscribe(topic);
+            if (!isLeader) {
+                sendSecure("REQUEST_JOIN:" + username);
+            } else {
+                updateChat(" Клан успешно инициализирован в защищенной комнате.");
+            }
+        });
+
+        client.on('message', function(t, message) {
+            var rawText = unpackMsg(message.toString(), secureKey);
+            parseNetworkLogic(rawText);
+        });
+
+        client.on('error', function(err) {
+            updateChat(" Ошибка сети: " + err.message);
+        });
+    } catch (err) {
+        alert("Ошибка выполнения connectToGame: " + err.message);
+    }
 }
 
 function sendSecure(rawText) {
@@ -199,19 +212,22 @@ function adminAction(type) {
     }
 }
 
-// ИСПРАВЛЕНО: Безопасный разбор строк без единой квадратной скобки (защита от багов разметки)
+// ПОЛНОСТЬЮ ОБНОВЛЕНО: Разбор строк вообще БЕЗ использования квадратных скобок и индексов
 function parseNetworkLogic(text) {
-    var parts = text.split(":");
-    var command = parts.shift();
+    var separatorIndex = text.indexOf(":");
+    if (separatorIndex === -1) return;
+
+    var command = text.substring(0, separatorIndex);
+    var data = text.substring(separatorIndex + 1);
 
     if (command === "REQUEST_JOIN") {
-        var name = parts.shift();
+        var name = data;
         if (isLeader) {
             updateChat(" ЗАПРОС: Игрок '" + name + "' хочет войти. Введите его ник в поле внизу и нажмите Впустить.");
         }
     } 
     else if (command === "ALLOW_USER") {
-        var name = parts.shift();
+        var name = data;
         if (username === name && !isLeader) {
             document.getElementById("msg_input").disabled = false;
             document.getElementById("send_btn").disabled = false;
@@ -222,7 +238,7 @@ function parseNetworkLogic(text) {
         }
     } 
     else if (command === "KICK_USER") {
-        var name = parts.shift();
+        var name = data;
         if (username === name) {
             document.getElementById("chat_log").innerText = "";
             window.location.reload();
@@ -231,47 +247,62 @@ function parseNetworkLogic(text) {
         }
     } 
     else if (command === "RENAME") {
-        var oldName = parts.shift();
-        var newName = parts.shift();
-        updateChat(" СИСТЕМА: '" + oldName + "' сменил ник на '" + newName + "'");
+        var nextSep = data.indexOf(":");
+        if (nextSep !== -1) {
+            var oldName = data.substring(0, nextSep);
+            var newName = data.substring(nextSep + 1);
+            updateChat(" СИСТЕМА: '" + oldName + "' сменил ник на '" + newName + "'");
+        }
     } 
     else if (command === "MSG") {
-        var sender = parts.shift();
-        var messageText = parts.join(":");
-        if (isLeader || !document.getElementById("msg_input").disabled) {
-            updateChat(sender + ": " + messageText);
+        var nextSep = data.indexOf(":");
+        if (nextSep !== -1) {
+            var sender = data.substring(0, nextSep);
+            var messageText = data.substring(nextSep + 1);
+            if (isLeader || !document.getElementById("msg_input").disabled) {
+                updateChat(sender + ": " + messageText);
+            }
         }
     } 
     else if (command === "GAME_START") {
-        var leaderName = parts.shift();
+        var leaderName = data;
         updateChat(" ИГРА: Лидер " + leaderName + " загадал новое число от 1 до 100! Попробуйте угадать.");
     } 
     else if (command === "GAME_GUESS") {
-        var pName = parts.shift();
-        var pGuess = parseInt(parts.shift());
-        if (isLeader) {
-            if (secretNumber === null) return;
-            if (pGuess === secretNumber) {
-                sendSecure("GAME_WIN:" + pName + ":" + secretNumber);
-                updateChat(" ИГРА: Игрок '" + pName + "' угадал число " + secretNumber + "! Игра окончена.");
-                secretNumber = null;
-            } else if (pGuess < secretNumber) {
-                sendSecure("GAME_HINT:" + pName + ":Загаданное число БОЛЬШЕ, чем " + pGuess);
-            } else {
-                sendSecure("GAME_HINT:" + pName + ":Загаданное число МЕНЬШЕ, чем " + pGuess);
+        var nextSep = data.indexOf(":");
+        if (nextSep !== -1) {
+            var pName = data.substring(0, nextSep);
+            var pGuess = parseInt(data.substring(nextSep + 1));
+            if (isLeader) {
+                if (secretNumber === null) return;
+                if (pGuess === secretNumber) {
+                    sendSecure("GAME_WIN:" + pName + ":" + secretNumber);
+                    updateChat(" ИГРА: Игрок '" + pName + "' угадал число " + secretNumber + "! Игра окончена.");
+                    secretNumber = null;
+                } else if (pGuess < secretNumber) {
+                    sendSecure("GAME_HINT:" + pName + ":Загаданное число БОЛЬШЕ, чем " + pGuess);
+                } else {
+                    sendSecure("GAME_HINT:" + pName + ":Загаданное число МЕНЬШЕ, чем " + pGuess);
+                }
             }
         }
     } 
     else if (command === "GAME_WIN") {
-        var pName = parts.shift();
-        var sNum = parts.shift();
-        updateChat(" ИГРА 🎉: Победитель '" + pName + "'! Было загадано число " + sNum + ".");
+        var nextSep = data.indexOf(":");
+        if (nextSep !== -1) {
+            var pName = data.substring(0, nextSep);
+            var sNum = data.substring(nextSep + 1);
+            updateChat(" ИГРА 🎉: Победитель '" + pName + "'! Было загадано число " + sNum + ".");
+        }
     } 
     else if (command === "GAME_HINT") {
-        var pName = parts.shift();
-        var hintText = parts.join(":");
-        if (username === pName) {
-            updateChat(" ПОДКАЗКА 💡: " + hintText);
+        var nextSep = data.indexOf(":");
+        if (nextSep !== -1) {
+            var pName = data.substring(0, nextSep);
+            var hintText = data.substring(nextSep + 1);
+            if (username === pName) {
+                updateChat(" ПОДКАЗКА 💡: " + hintText);
+            }
         }
     }
 }
@@ -284,5 +315,6 @@ function updateChat(text) {
 </script>
 </body>
 </html>
+
 
 
