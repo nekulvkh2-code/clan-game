@@ -45,16 +45,12 @@
     </div>
     <div id="info_label" style="font-size:13px; color:#aaa; margin-top:5px; margin-bottom:5px;"></div>
 
-    <!-- ПАНЕЛЬ МИНИ-ИГРЫ "УГАДАЙ ЧИСЛО" -->
+    <!-- ПАНЕЛЬ МИНИ-ИГРЫ -->
     <div class="game-panel">
         <div class="game-title">МИНИ-ИГРА: УГАДАЙ ЧИСЛО (1-100)</div>
-        
-        <!-- Интерфейс для Лидера (Загадать число) -->
         <div id="leader_game_controls" class="hidden" style="display: flex; gap: 5px;">
             <button class="btn-orange" style="flex-grow:1; padding:8px;" onclick="generateSecretNumber()">Загадать новое число</button>
         </div>
-        
-        <!-- Интерфейс для Игрока (Попробовать угадать) -->
         <div id="player_game_controls" style="display: flex; gap: 5px;">
             <input type="number" id="guess_input" style="margin:0; flex-grow:1; padding:8px;" placeholder="Ваш вариант">
             <button class="btn-orange" style="padding:8px 15px;" onclick="sendGuess()">Проверить</button>
@@ -63,7 +59,7 @@
     
     <div id="chat_log">--- Сквозное шифрование активно ---&#10;</div>
 
-    <!-- Панель управления игроками для Лидера -->
+    <!-- Панель управления для Лидера -->
     <div id="admin_panel" class="admin-panel hidden">
         <input type="text" id="target_input" style="flex-grow:1; margin:0;" placeholder="Ник игрока">
         <button class="btn-green" onclick="adminAction('ALLOW_USER')">Впустить</button>
@@ -78,7 +74,6 @@
 let username, roomPassword, isLeader, client, topic;
 let secretNumber = null;
 
-// Сквозное шифрование (XOR + Base64)
 function crypt(str, key) {
     let output = "";
     for (let i = 0; i < str.length; i++) {
@@ -107,13 +102,11 @@ function connectToGame() {
     } else {
         document.getElementById("msg_input").disabled = true;
         document.getElementById("send_btn").disabled = true;
-        document.getElementById("info_label").innerText = "Статус: Ожидание авторизации Лидером...";
+        document.getElementById("info_label").innerText = `Статус: Ожидание авторизации Лидером... | ПИН: ${roomPassword}`;
         updateChat(" Системный запрос на подключение отправлен...");
     }
 
-    // Уникальный защищенный канал клана на базе вашего логина GitHub
     topic = "nekulvkh2_clan_room_" + roomPassword;
-    
     client = mqtt.connect("wss://://hivemq.com");
 
     client.on('connect', () => {
@@ -138,12 +131,11 @@ function sendSecure(rawText) {
 function sendMessage() {
     let text = document.getElementById("msg_input").value.trim();
     if (text) {
-        sendSecure(`MSG:${username}: ${text}`);
+        sendSecure(`MSG:${username}:${text}`);
         document.getElementById("msg_input").value = "";
     }
 }
 
-// ЛОГИКА ИГРЫ "УГАДАЙ ЧИСЛО"
 function generateSecretNumber() {
     secretNumber = Math.floor(Math.random() * 100) + 1;
     sendSecure(`GAME_START:${username}`);
@@ -181,23 +173,26 @@ function adminAction(type) {
 }
 
 function parseNetworkLogic(text) {
-    if (text.startsWith("REQUEST_JOIN:")) {
-        let name = text.substring(13);
-        if (isLeader) updateChat(` ЗАПРОС: Игрок '${name}' хочет войти.`);
+    let parts = text.split(":");
+    let command = parts[0];
+
+    if (command === "REQUEST_JOIN") {
+        let name = parts[1];
+        if (isLeader) updateChat(` ЗАПРОС: Игрок '${name}' хочет войти. Введите его ник в поле внизу и нажмите Впустить.`);
     } 
-    else if (text.startsWith("ALLOW_USER:")) {
-        let name = text.substring(11);
+    else if (command === "ALLOW_USER") {
+        let name = parts[1];
         if (username === name && !isLeader) {
             document.getElementById("msg_input").disabled = false;
             document.getElementById("send_btn").disabled = false;
-            document.getElementById("info_label").innerText = "Статус: Доступ разрешен. Вы в сети.";
+            document.getElementById("info_label").innerText = `Статус: Доступ разрешен. Вы в сети. | ПИН: ${roomPassword}`;
             updateChat(" Владелец Клана открыл вам доступ в чат.");
         } else if (isLeader || !document.getElementById("msg_input").disabled) {
             updateChat(` Игрок '${name}' вошел в комнату.`);
         }
     } 
-    else if (text.startsWith("KICK_USER:")) {
-        let name = text.substring(10);
+    else if (command === "KICK_USER") {
+        let name = parts[1];
         if (username === name) {
             document.getElementById("chat_log").innerText = "";
             window.location.reload();
@@ -205,21 +200,23 @@ function parseNetworkLogic(text) {
             updateChat(` Игрок '${name}' был исключен из клана.`);
         }
     } 
-    else if (text.startsWith("RENAME:")) {
-        let parts = text.split(":");
-        updateChat(` СИСТЕМА: '${parts[1]}' сменил ник на '${parts[2]}'`);
+    else if (command === "RENAME") {
+        let oldName = parts[1];
+        let newName = parts[2];
+        updateChat(` СИСТЕМА: '${oldName}' сменил ник на '${newName}'`);
     } 
-    else if (text.startsWith("MSG:")) {
-        let content = text.substring(4);
-        if (isLeader || !document.getElementById("msg_input").disabled) updateChat(content);
+    else if (command === "MSG") {
+        let sender = parts[1];
+        let messageText = parts.slice(2).join(":");
+        if (isLeader || !document.getElementById("msg_input").disabled) {
+            updateChat(`${sender}: ${messageText}`);
+        }
     }
-    // СЕТЕВЫЕ СИГНАЛЫ ДЛЯ ИГРЫ
-    else if (text.startsWith("GAME_START:")) {
-        let leaderName = text.substring(11);
+    else if (command === "GAME_START") {
+        let leaderName = parts[1];
         updateChat(` ИГРА: Лидер ${leaderName} загадал новое число от 1 до 100! Попробуйте угадать.`);
     }
-    else if (text.startsWith("GAME_GUESS:")) {
-        let parts = text.split(":");
+    else if (command === "GAME_GUESS") {
         let pName = parts[1];
         let pGuess = parseInt(parts[2]);
         
@@ -236,14 +233,16 @@ function parseNetworkLogic(text) {
             }
         }
     }
-    else if (text.startsWith("GAME_WIN:")) {
-        let parts = text.split(":");
-        updateChat(` ИГРА 🎉: Победитель '${parts[1]}'! Было загадано число ${parts[2]}.`);
+    else if (command === "GAME_WIN") {
+        let pName = parts[1];
+        let sNum = parts[2];
+        updateChat(` ИГРА 🎉: Победитель '${pName}'! Было загадано число ${sNum}.`);
     }
-    else if (text.startsWith("GAME_HINT:")) {
-        let parts = text.split(":");
-        if (username === parts[1]) {
-            updateChat(` ПОДКАЗКА 💡: ${parts[2]}`);
+    else if (command === "GAME_HINT") {
+        let pName = parts[1];
+        let hintText = parts.slice(2).join(":");
+        if (username === pName) {
+            updateChat(` ПОДКАЗКА 💡: ${hintText}`);
         }
     }
 }
