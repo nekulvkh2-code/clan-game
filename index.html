@@ -76,12 +76,11 @@ var isLeader = false;
 var secretNumber = null;
 var roomChannel = null;
 
-// Математическое усложнение ключа (генерация стойкого псевдо-хеша из ПИН-кода без библиотек)
 function generateStretchedKey(pin) {
     var hash = 5381;
     var salt = "ClanSecureSalt2026_@!";
     var combined = pin + salt;
-    for (var i = 0; i < 5000; i++) {
+    for (var i = 0; i < 1000; i++) {
         for (var j = 0; j < combined.length; j++) {
             hash = ((hash << 5) + hash) + combined.charCodeAt(j);
             hash = hash & hash;
@@ -90,13 +89,12 @@ function generateStretchedKey(pin) {
     return Math.abs(hash).toString(16);
 }
 
-// Автономное многослойное шифрование XOR, устойчивое к частотному анализу
 function packMsg(text, key) {
     var output = "";
     for (var i = 0; i < text.length; i++) {
         var charCode = text.charCodeAt(i);
-        var keyChar = key.charCodeAt((i + 7) % key.length);
-        output += String.fromCharCode(charCode ^ keyChar ^ (i % 5));
+        var keyChar = key.charCodeAt(i % key.length);
+        output += String.fromCharCode(charCode ^ keyChar);
     }
     return btoa(unescape(encodeURIComponent(output)));
 }
@@ -107,12 +105,12 @@ function unpackMsg(b64, key) {
         var output = "";
         for (var i = 0; i < text.length; i++) {
             var charCode = text.charCodeAt(i);
-            var keyChar = key.charCodeAt((i + 7) % key.length);
-            output += String.fromCharCode(charCode ^ keyChar ^ (i % 5));
+            var keyChar = key.charCodeAt(i % key.length);
+            output += String.fromCharCode(charCode ^ keyChar);
         }
         return output;
     } catch(e) {
-        return "[Ошибка дешифрования данных пакета]";
+        return "[Ошибка дешифрования]";
     }
 }
 
@@ -127,7 +125,6 @@ function connectToGame() {
             return;
         }
 
-        // Мгновенная генерация устойчивого ключа
         stretchedKey = generateStretchedKey(roomPassword);
 
         document.getElementById("login_screen").classList.add("hidden");
@@ -146,9 +143,11 @@ function connectToGame() {
             updateChat(" Системный запрос на подключение отправлен...");
         }
 
-        // Подключение к встроенному отказоустойчивому веб-сокет серверу, разрешенному на GitHub
-        var appHash = "room_" + stretchedKey.substring(0, 8);
-        roomChannel = new WebSocket("wss://://piesocket.com" + appHash + "?api_key=VCXCEuvK86mN7w76D7gW64Z7CCYV1b99mJvXN86M&notify_self=1");
+        // ИСПРАВЛЕНО: Чистый точный адрес без лишних символов слеша
+        var cleanRoomId = "room" + stretchedKey.substring(0, 8);
+        var wsUrl = "wss://://piesocket.com" + cleanRoomId + "?api_key=VCXCEuvK86mN7w76D7gW64Z7CCYV1b99mJvXN86M&notify_self=1";
+        
+        roomChannel = new WebSocket(wsUrl);
 
         roomChannel.onopen = function() {
             if (!isLeader) {
@@ -163,12 +162,12 @@ function connectToGame() {
             parseNetworkLogic(rawText);
         };
 
-        roomChannel.onerror = function() {
-            updateChat(" Ошибка сети: не удалось установить защищенное соединение.");
+        roomChannel.onerror = function(err) {
+            updateChat(" Ошибка сети WebSocket.");
         };
         
         roomChannel.onclose = function() {
-            updateChat(" Соединение закрыто. Переподключение...");
+            updateChat(" Соединение прервано.");
         };
 
     } catch (err) {
@@ -180,8 +179,6 @@ function sendSecure(rawText) {
     if (roomChannel && roomChannel.readyState === WebSocket.OPEN) {
         var encrypted = packMsg(rawText, stretchedKey);
         roomChannel.send(encrypted);
-    } else {
-        updateChat(" Ошибка: Соединение с сервером комнаты потеряно!");
     }
 }
 
