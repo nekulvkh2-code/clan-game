@@ -6,9 +6,8 @@
     <title>Чат Клана (Защищенная E2EE сессия)</title>
     <link rel="manifest" href="manifest.json">
     
-    <!-- Гарантированно работающие HTTPS библиотеки для GitHub Pages -->
+    <!-- Подключение внешних библиотек через HTTPS CDN -->
     <script src="https://cloudflare.com"></script>
-    <!-- Подключаем криптографическую библиотеку CryptoJS для сквозного шифрования AES-256 -->
     <script src="https://cloudflare.com"></script>
     
     <style>
@@ -76,10 +75,10 @@
     </div>
 
 <script>
-let username, roomPassword, secureKey, isLeader, client, topic;
-let secretNumber = null;
+var username, roomPassword, secureKey, isLeader, client, topic;
+var secretNumber = null;
 
-// ИСПРАВЛЕНО: Настоящее сквозное шифрование AES-256
+// Полноценное E2EE шифрование AES-256
 function packMsg(text, key) {
     try {
         return CryptoJS.AES.encrypt(text, key).toString();
@@ -90,12 +89,12 @@ function packMsg(text, key) {
 
 function unpackMsg(cipherText, key) {
     try {
-        let bytes = CryptoJS.AES.decrypt(cipherText, key);
-        let decryptedText = bytes.toString(CryptoJS.enc.Utf8);
-        if (!decryptedText) return "[Ошибка: Неверный ПИН-код или ключ]";
+        var bytes = CryptoJS.AES.decrypt(cipherText, key);
+        var decryptedText = bytes.toString(CryptoJS.enc.Utf8);
+        if (!decryptedText) return "[Ошибка: неверный ключ]";
         return decryptedText;
     } catch(e) {
-        return "[Ошибка дешифрования данных]";
+        return "[Ошибка дешифрования]";
     }
 }
 
@@ -105,7 +104,7 @@ function connectToGame() {
     isLeader = document.getElementById("role_spinner").value === "leader";
     if (!username || !roomPassword) return;
 
-    // Генерируем хэш SHA-256 из ПИН-кода для создания надежного 256-битного ключа
+    // Генерация 256-битного мастер-ключа из вашего ПИН-кода
     secureKey = CryptoJS.SHA256(roomPassword).toString();
 
     document.getElementById("login_screen").classList.add("hidden");
@@ -124,7 +123,7 @@ function connectToGame() {
         updateChat(" Системный запрос на подключение отправлен...");
     }
 
-    // Хешируем имя топика, чтобы посторонние не знали имя комнаты по ПИН-коду
+    // Хешируем имя веб-сокет топика, чтобы скрыть его от посторонних глаз
     topic = "clan_room_" + CryptoJS.MD5(roomPassword).toString();
     client = mqtt.connect("wss://://hivemq.com");
 
@@ -138,8 +137,7 @@ function connectToGame() {
     });
 
     client.on('message', function(t, message) {
-        // Передаем созданный хэш-ключ для расшифровки пакета
-        let rawText = unpackMsg(message.toString(), secureKey);
+        var rawText = unpackMsg(message.toString(), secureKey);
         parseNetworkLogic(rawText);
     });
 
@@ -150,15 +148,15 @@ function connectToGame() {
 
 function sendSecure(rawText) {
     if (client && client.connected) {
-        let encrypted = packMsg(rawText, secureKey);
+        var encrypted = packMsg(rawText, secureKey);
         client.publish(topic, encrypted);
     } else {
-        updateChat(" Ошибка: Нет соединения с сетью брокера!");
+        updateChat(" Ошибка: Соединение с брокером потеряно!");
     }
 }
 
 function sendMessage() {
-    let text = document.getElementById("msg_input").value.trim();
+    var text = document.getElementById("msg_input").value.trim();
     if (text) {
         sendSecure("MSG:" + username + ":" + text);
         document.getElementById("msg_input").value = "";
@@ -172,7 +170,7 @@ function generateSecretNumber() {
 }
 
 function sendGuess() {
-    let guess = document.getElementById("guess_input").value.trim();
+    var guess = document.getElementById("guess_input").value.trim();
     if (guess) {
         sendSecure("GAME_GUESS:" + username + ":" + guess);
         document.getElementById("guess_input").value = "";
@@ -180,9 +178,9 @@ function sendGuess() {
 }
 
 function changeName() {
-    let newName = document.getElementById("current_name_input").value.trim();
+    var newName = document.getElementById("current_name_input").value.trim();
     if (newName && newName !== username) {
-        let oldName = username;
+        var oldName = username;
         username = newName;
         if (isLeader || !document.getElementById("msg_input").disabled) {
             sendSecure("RENAME:" + oldName + ":" + newName);
@@ -193,7 +191,7 @@ function changeName() {
 }
 
 function adminAction(type) {
-    let target = document.getElementById("target_input").value.trim();
+    var target = document.getElementById("target_input").value.trim();
     if (target && isLeader) {
         sendSecure(type + ":" + target);
         updateChat(type === 'ALLOW_USER' ? "Игрок '" + target + "' авторизован." : "Игрок '" + target + "' удален.");
@@ -201,19 +199,19 @@ function adminAction(type) {
     }
 }
 
-// Абсолютно чистый парсинг массивов без потери скобок []
+// ИСПРАВЛЕНО: Безопасный разбор строк без единой квадратной скобки (защита от багов разметки)
 function parseNetworkLogic(text) {
-    let parts = text.split(":");
-    let command = parts[0];
+    var parts = text.split(":");
+    var command = parts.shift();
 
     if (command === "REQUEST_JOIN") {
-        let name = parts[1];
+        var name = parts.shift();
         if (isLeader) {
             updateChat(" ЗАПРОС: Игрок '" + name + "' хочет войти. Введите его ник в поле внизу и нажмите Впустить.");
         }
     } 
     else if (command === "ALLOW_USER") {
-        let name = parts[1];
+        var name = parts.shift();
         if (username === name && !isLeader) {
             document.getElementById("msg_input").disabled = false;
             document.getElementById("send_btn").disabled = false;
@@ -224,7 +222,7 @@ function parseNetworkLogic(text) {
         }
     } 
     else if (command === "KICK_USER") {
-        let name = parts[1];
+        var name = parts.shift();
         if (username === name) {
             document.getElementById("chat_log").innerText = "";
             window.location.reload();
@@ -233,24 +231,24 @@ function parseNetworkLogic(text) {
         }
     } 
     else if (command === "RENAME") {
-        let oldName = parts[1];
-        let newName = parts[2];
+        var oldName = parts.shift();
+        var newName = parts.shift();
         updateChat(" СИСТЕМА: '" + oldName + "' сменил ник на '" + newName + "'");
     } 
     else if (command === "MSG") {
-        let sender = parts[1];
-        let messageText = parts.slice(2).join(":");
+        var sender = parts.shift();
+        var messageText = parts.join(":");
         if (isLeader || !document.getElementById("msg_input").disabled) {
             updateChat(sender + ": " + messageText);
         }
     } 
     else if (command === "GAME_START") {
-        let leaderName = parts[1];
+        var leaderName = parts.shift();
         updateChat(" ИГРА: Лидер " + leaderName + " загадал новое число от 1 до 100! Попробуйте угадать.");
     } 
     else if (command === "GAME_GUESS") {
-        let pName = parts[1];
-        let pGuess = parseInt(parts[2]);
+        var pName = parts.shift();
+        var pGuess = parseInt(parts.shift());
         if (isLeader) {
             if (secretNumber === null) return;
             if (pGuess === secretNumber) {
@@ -265,13 +263,13 @@ function parseNetworkLogic(text) {
         }
     } 
     else if (command === "GAME_WIN") {
-        let pName = parts[1];
-        let sNum = parts[2];
+        var pName = parts.shift();
+        var sNum = parts.shift();
         updateChat(" ИГРА 🎉: Победитель '" + pName + "'! Было загадано число " + sNum + ".");
     } 
     else if (command === "GAME_HINT") {
-        let pName = parts[1];
-        let hintText = parts.slice(2).join(":");
+        var pName = parts.shift();
+        var hintText = parts.join(":");
         if (username === pName) {
             updateChat(" ПОДКАЗКА 💡: " + hintText);
         }
@@ -279,11 +277,12 @@ function parseNetworkLogic(text) {
 }
 
 function updateChat(text) {
-    let log = document.getElementById("chat_log");
+    var log = document.getElementById("chat_log");
     log.innerText += text + "\n";
     log.scrollTop = log.scrollHeight;
 }
 </script>
 </body>
 </html>
+
 
